@@ -104,6 +104,22 @@
   revision = "73d445a93680fa1a78ae23a5839bad48f32ba1ee"
 
 [[projects]]
+  digest = "1:53becd66889185091b58ea3fc49294996f2179fb05a89702f4de7d15e581b509"
+  name = "github.com/go-logr/logr"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "9fb12b3b21c5415d16ac18dc5cd42c1cfdd40c4e"
+  version = "v0.1.0"
+
+[[projects]]
+  digest = "1:340497a512995aa69c0add901d79a2096b3449d35a44a6f1f1115091a9f8c687"
+  name = "github.com/go-logr/zapr"
+  packages = ["."]
+  pruneopts = "NUT"
+  revision = "03f06a783fbb7dfaf3f629c7825480e43a7105e6"
+  version = "v0.1.1"
+
+[[projects]]
   digest = "1:373397317168dd5ac00efda13940668f1947fd641f572b9cf386a86a99c63ca9"
   name = "github.com/gobuffalo/envy"
   packages = ["."]
@@ -786,7 +802,7 @@
   version = "kubernetes-1.12.6"
 
 [[projects]]
-  digest = "1:db8956be14a2580055d7e43378659c82be3f991bf28bdcbb0d3cebcaea431b38"
+  digest = "1:bf080db1b869c1650e1b222ef35611e47d8fc62ab5710937705e860db64a308c"
   name = "k8s.io/client-go"
   packages = [
     "discovery",
@@ -936,6 +952,7 @@
     "plugin/pkg/client/auth/exec",
     "rest",
     "rest/watch",
+    "restmapper",
     "testing",
     "tools/auth",
     "tools/cache",
@@ -1013,6 +1030,21 @@
   pruneopts = "NUT"
   revision = "e3762e86a74c878ffed47484592986685639c2cd"
 
+[[projects]]
+  branch = "knative-fork"
+  digest = "1:06d86ec2b51ca4e0d7303c08c2f34ab5a27455990dd56fbaffb8fd0119b8d8cf"
+  name = "sigs.k8s.io/controller-runtime"
+  packages = [
+    "pkg/cache",
+    "pkg/cache/internal",
+    "pkg/client",
+    "pkg/client/apiutil",
+    "pkg/runtime/log",
+  ]
+  pruneopts = "NUT"
+  revision = "392f43f890343e1fbefb0bbe3cbf9314e64565ba"
+  source = "https://github.com/grantr/controller-runtime"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
@@ -1049,7 +1081,6 @@
     "k8s.io/api/authentication/v1",
     "k8s.io/api/batch/v1",
     "k8s.io/api/core/v1",
-    "k8s.io/api/extensions/v1beta1",
     "k8s.io/api/rbac/v1",
     "k8s.io/apimachinery/pkg/api/equality",
     "k8s.io/apimachinery/pkg/api/errors",
@@ -1091,6 +1122,9 @@
     "k8s.io/code-generator/cmd/defaulter-gen",
     "k8s.io/code-generator/cmd/informer-gen",
     "k8s.io/code-generator/cmd/lister-gen",
+    "sigs.k8s.io/controller-runtime/pkg/cache",
+    "sigs.k8s.io/controller-runtime/pkg/client",
+    "sigs.k8s.io/controller-runtime/pkg/client/apiutil",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1
