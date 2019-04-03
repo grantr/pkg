@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/knative/pkg/client/clientset/versioned/scheme"
+	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 
@@ -31,6 +31,7 @@ import (
 
 var (
 	// Client is a global controller-runtime Client for use by reconcilers.
+	// TODO this is bad. It makes testing with a fake client difficult.
 	Client     client.Client
 	clientOnce sync.Once
 )
