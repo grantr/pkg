@@ -15,7 +15,9 @@ import (
 )
 
 var (
-	// Cache is a global informer cache for use by reconcilers.
+	// Cache is a global informer cache for use by reconcilers. This must be
+	// configured by calling either ConfigureCache or NewClient, then started
+	// by calling StartCache.
 	Cache cache.Cache
 
 	cacheOnce sync.Once
@@ -65,10 +67,16 @@ func Namespace(namespace string) RuntimeOptionFunc {
 	}
 }
 
-// StartCache starts the global informer cache and blocks until stopCh is
-// is closed. This must be called before calling NewClient, MustGetInformer, or
-// MustAddEventHandler.
-func StartCache(config *rest.Config, stopCh <-chan struct{}, opts ...RuntimeOptionFunc) error {
+// StartCache is a convenience method for starting the cache. It is equivalent
+// to calling Cache.Start(stopCh).
+func StartCache(stopCh <-chan struct{}) error {
+	return Cache.Start(stopCh)
+}
+
+// ConfigureCache creates a new global informer cache. StartCache must be called
+// after this is called. If NewClient has already been called,
+// this method is a no-op.
+func ConfigureCache(config *rest.Config, opts ...RuntimeOptionFunc) error {
 	if config == nil {
 		return fmt.Errorf("must specify Config")
 	}
@@ -89,19 +97,20 @@ func StartCache(config *rest.Config, stopCh <-chan struct{}, opts ...RuntimeOpti
 		if err != nil {
 			return
 		}
-
-		err = Cache.Start(stopCh)
 	})
-
 	return err
 }
 
 // NewClient creates a new client for interacting with the apiserver. The client
-// delegates reads to the global informer cache. StartCache must be called
-// before calling this method.
+// delegates reads to the global informer cache. If ConfigureCache hasn't been
+// called, this method calls it.
 func NewClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, error) {
 	if config == nil {
 		return nil, fmt.Errorf("must specify Config")
+	}
+
+	if err := ConfigureCache(config, opts...); err != nil {
+		return nil, err
 	}
 
 	resolvedOpts := &RuntimeOptions{}
@@ -127,7 +136,7 @@ func NewClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, e
 }
 
 // MustGetInformer gets the informer for the given object from the global
-// informer cache, or panics if an error occurs. StartCache must be called
+// informer cache, or panics if an error occurs. Cache.Start must be called
 // before calling this method.
 func MustGetInformer(obj runtime.Object) toolscache.SharedIndexInformer {
 	informer, err := Cache.GetInformer(obj)
@@ -138,7 +147,7 @@ func MustGetInformer(obj runtime.Object) toolscache.SharedIndexInformer {
 }
 
 // MustAddEventHandler adds the given event handler to the informer for the
-// given object in the global cache, or panics if an error occurs. StartCache
+// given object in the global cache, or panics if an error occurs. Cache.Start
 // must be called before calling this method.
 func MustAddEventHandler(obj runtime.Object, handler toolscache.ResourceEventHandler) {
 	MustGetInformer(obj).AddEventHandler(handler)
