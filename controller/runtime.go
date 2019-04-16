@@ -21,7 +21,6 @@ var (
 	Cache cache.Cache
 
 	cacheOnce sync.Once
-	mapper    meta.RESTMapper
 )
 
 // RuntimeOptions contains options for creating caches and clients.
@@ -37,6 +36,9 @@ type RuntimeOptions struct {
 	// Namespace restricts the cache to the given namespace.
 	// Default is to watch all namespaces.
 	Namespace string
+
+	// mapper is the REST mapper to use.
+	mapper meta.RESTMapper
 }
 
 // RuntimeOptionFunc is a function that mutates a RuntimeOptions struct. It
@@ -67,16 +69,49 @@ func Namespace(namespace string) RuntimeOptionFunc {
 	}
 }
 
-// StartCache is a convenience method for starting the cache. It is equivalent
-// to calling Cache.Start(stopCh).
-func StartCache(stopCh <-chan struct{}) error {
+// mapper is a functional option that sets the mapper field of a RuntimeOptions
+// struct.
+func mapper(mapper meta.RESTMapper) RuntimeOptionFunc {
+	return func(o *RuntimeOptions) {
+		o.mapper = mapper
+	}
+}
+
+// NewCache creates a new informer cache. The cache must be started afterward
+// by calling Start.
+func NewCache(config *rest.Config, opts ...RuntimeOptionFunc) (cache.Cache, error) {
+	if config == nil {
+		return nil, fmt.Errorf("must specify Config")
+	}
+
+	resolvedOpts := &RuntimeOptions{}
+	for _, optFunc := range opts {
+		optFunc(resolvedOpts)
+	}
+
+	restMapper := resolvedOpts.mapper
+	if restMapper == nil {
+		var err error
+		restMapper, err = apiutil.NewDiscoveryRESTMapper(config)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return cache.New(config, cache.Options{Scheme: resolvedOpts.Scheme, Mapper: restMapper, Resync: resolvedOpts.Resync, Namespace: resolvedOpts.Namespace})
+}
+
+// StartGlobalCache is a convenience method for starting the global informer
+// cache. It is equivalent to calling Cache.Start(stopCh).
+func StartGlobalCache(stopCh <-chan struct{}) error {
 	return Cache.Start(stopCh)
 }
 
-// ConfigureCache creates a new global informer cache. StartCache must be called
-// after this is called. If NewClient has already been called,
-// this method is a no-op.
-func ConfigureCache(config *rest.Config, opts ...RuntimeOptionFunc) error {
+// ConfigureGlobalCache creates a new global informer cache. The cache must be
+// started afterward by calling StartGlobalCache or Cache.Start.
+//
+// If NewCachingClient has already been called, this method is a no-op.
+func ConfigureGlobalCache(config *rest.Config, opts ...RuntimeOptionFunc) error {
 	if config == nil {
 		return fmt.Errorf("must specify Config")
 	}
@@ -88,29 +123,17 @@ func ConfigureCache(config *rest.Config, opts ...RuntimeOptionFunc) error {
 
 	var err error
 	cacheOnce.Do(func() {
-		mapper, err = apiutil.NewDiscoveryRESTMapper(config)
-		if err != nil {
-			return
-		}
-
-		Cache, err = cache.New(config, cache.Options{Scheme: resolvedOpts.Scheme, Mapper: mapper, Resync: resolvedOpts.Resync, Namespace: resolvedOpts.Namespace})
-		if err != nil {
-			return
-		}
+		Cache, err = NewCache(config, opts...)
 	})
 	return err
 }
 
-// NewClient creates a new client for interacting with the apiserver. The client
-// delegates reads to the global informer cache. If ConfigureCache hasn't been
-// called, this method calls it.
-func NewClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, error) {
+// NewCachingClient creates a new client for interacting with the apiserver. The
+// client delegates reads to the global informer cache. If ConfigureGlobalCache
+// hasn't been called, this method calls it.
+func NewCachingClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, error) {
 	if config == nil {
 		return nil, fmt.Errorf("must specify Config")
-	}
-
-	if err := ConfigureCache(config, opts...); err != nil {
-		return nil, err
 	}
 
 	resolvedOpts := &RuntimeOptions{}
@@ -118,7 +141,20 @@ func NewClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, e
 		optFunc(resolvedOpts)
 	}
 
-	apiClient, err := client.New(config, client.Options{Scheme: resolvedOpts.Scheme, Mapper: mapper})
+	if resolvedOpts.mapper == nil {
+		restMapper, err := apiutil.NewDiscoveryRESTMapper(config)
+		if err != nil {
+			return nil, err
+		}
+		resolvedOpts.mapper = restMapper
+		opts = append(opts, mapper(resolvedOpts.mapper))
+	}
+
+	if err := ConfigureGlobalCache(config, opts...); err != nil {
+		return nil, err
+	}
+
+	apiClient, err := client.New(config, client.Options{Scheme: resolvedOpts.Scheme, Mapper: resolvedOpts.mapper})
 	if err != nil {
 		return nil, err
 	}
