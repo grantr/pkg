@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
+	toolscache "k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
@@ -92,4 +93,20 @@ func NewCacheAndClient(config *rest.Config, opts ...RuntimeOptionFunc) (cache.Ca
 	}
 
 	return cache, cachingClient, err
+}
+
+// MustGetInformer gets the informer for the given object from the given cache,
+// or panics if an error occurs.
+func MustGetInformer(cache cache.Cache, obj runtime.Object) toolscache.SharedIndexInformer {
+	informer, err := cache.GetInformer(obj)
+	if err != nil {
+		panic(err)
+	}
+	return informer
+}
+
+// MustAddEventHandler adds the given event handler to the informer for the
+// given object in the given cache, or panics if an error occurs.
+func MustAddEventHandler(cache cache.Cache, obj runtime.Object, handler toolscache.ResourceEventHandler) {
+	MustGetInformer(cache, obj).AddEventHandler(handler)
 }
