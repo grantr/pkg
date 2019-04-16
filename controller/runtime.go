@@ -2,14 +2,24 @@ package controller
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/rest"
 	toolscache "k8s.io/client-go/tools/cache"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+)
+
+var (
+	// Cache is a global informer cache for use by reconcilers.
+	Cache cache.Cache
+
+	cacheOnce sync.Once
+	mapper    meta.RESTMapper
 )
 
 // RuntimeOptions contains options for creating caches and clients.
@@ -55,12 +65,11 @@ func Namespace(namespace string) RuntimeOptionFunc {
 	}
 }
 
-// NewCacheAndClient creates a new informer cache and client delegating to that
-// cache. The cache can be used to retrieve an informer for any GVK or
-// runtime.Object. The client can be used to interact with the apiserver.
-func NewCacheAndClient(config *rest.Config, opts ...RuntimeOptionFunc) (cache.Cache, client.Client, error) {
+// StartCache starts the global informer cache. This must be called before
+// calling NewClient, MustGetInformer, or MustAddEventHandler.
+func StartCache(config *rest.Config, stopCh <-chan struct{}, opts ...RuntimeOptionFunc) error {
 	if config == nil {
-		return nil, nil, fmt.Errorf("must specify Config")
+		return fmt.Errorf("must specify Config")
 	}
 
 	resolvedOpts := &RuntimeOptions{}
@@ -68,37 +77,57 @@ func NewCacheAndClient(config *rest.Config, opts ...RuntimeOptionFunc) (cache.Ca
 		optFunc(resolvedOpts)
 	}
 
-	mapper, err := apiutil.NewDiscoveryRESTMapper(config)
-	if err != nil {
-		return nil, nil, err
+	var err error
+	cacheOnce.Do(func() {
+		mapper, err = apiutil.NewDiscoveryRESTMapper(config)
+		if err != nil {
+			return
+		}
+
+		Cache, err = cache.New(config, cache.Options{Scheme: resolvedOpts.Scheme, Mapper: mapper, Resync: resolvedOpts.Resync, Namespace: resolvedOpts.Namespace})
+		if err != nil {
+			return
+		}
+	})
+
+	return err
+}
+
+// NewClient creates a new client for interacting with the apiserver. The client
+// delegates reads to the global informer cache. StartCache must be called
+// before calling this method.
+func NewClient(config *rest.Config, opts ...RuntimeOptionFunc) (client.Client, error) {
+	if config == nil {
+		return nil, fmt.Errorf("must specify Config")
 	}
 
-	cache, err := cache.New(config, cache.Options{Scheme: resolvedOpts.Scheme, Mapper: mapper, Resync: resolvedOpts.Resync, Namespace: resolvedOpts.Namespace})
-	if err != nil {
-		return nil, nil, err
+	resolvedOpts := &RuntimeOptions{}
+	for _, optFunc := range opts {
+		optFunc(resolvedOpts)
 	}
 
 	apiClient, err := client.New(config, client.Options{Scheme: resolvedOpts.Scheme, Mapper: mapper})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	cachingClient := &client.DelegatingClient{
 		Reader: &client.DelegatingReader{
-			CacheReader:  cache,
+			CacheReader:  Cache,
 			ClientReader: apiClient,
 		},
 		Writer:       apiClient,
 		StatusClient: apiClient,
 	}
 
-	return cache, cachingClient, err
+	return cachingClient, err
 }
 
-// MustGetInformer gets the informer for the given object from the given cache,
-// or panics if an error occurs.
-func MustGetInformer(cache cache.Cache, obj runtime.Object) toolscache.SharedIndexInformer {
-	informer, err := cache.GetInformer(obj)
+// MustGetInformer gets the informer for the given object from the global
+// informer cache, or panics if an error occurs. StartCache must be called
+// before calling this method.
+func MustGetInformer(obj runtime.Object) toolscache.SharedIndexInformer {
+	informer, err := Cache.GetInformer(obj)
 	if err != nil {
 		panic(err)
 	}
@@ -106,7 +135,8 @@ func MustGetInformer(cache cache.Cache, obj runtime.Object) toolscache.SharedInd
 }
 
 // MustAddEventHandler adds the given event handler to the informer for the
-// given object in the given cache, or panics if an error occurs.
-func MustAddEventHandler(cache cache.Cache, obj runtime.Object, handler toolscache.ResourceEventHandler) {
-	MustGetInformer(cache, obj).AddEventHandler(handler)
+// given object in the global cache, or panics if an error occurs. StartCache
+// must be called before calling this method.
+func MustAddEventHandler(obj runtime.Object, handler toolscache.ResourceEventHandler) {
+	MustGetInformer(obj).AddEventHandler(handler)
 }
