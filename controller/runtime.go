@@ -65,8 +65,9 @@ func Namespace(namespace string) RuntimeOptionFunc {
 	}
 }
 
-// StartCache starts the global informer cache. This must be called before
-// calling NewClient, MustGetInformer, or MustAddEventHandler.
+// StartCache starts the global informer cache and blocks until stopCh is
+// is closed. This must be called before calling NewClient, MustGetInformer, or
+// MustAddEventHandler.
 func StartCache(config *rest.Config, stopCh <-chan struct{}, opts ...RuntimeOptionFunc) error {
 	if config == nil {
 		return fmt.Errorf("must specify Config")
@@ -88,6 +89,8 @@ func StartCache(config *rest.Config, stopCh <-chan struct{}, opts ...RuntimeOpti
 		if err != nil {
 			return
 		}
+
+		err = Cache.Start(stopCh)
 	})
 
 	return err
